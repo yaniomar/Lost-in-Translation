@@ -1,5 +1,15 @@
 .env
+.env.*
+!.env.example
+!**/.env.example
+.aws/
+.secrets/
+secrets/
+*.pem
+*.key
 node_modules/
+node_modules.stale-codex*/
 dist/
+.vercel/
 .DS_Store
 *.log

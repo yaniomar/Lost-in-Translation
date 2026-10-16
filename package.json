@@ -2,10 +2,18 @@
   "name": "devfest-lost-in-translation",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "build": "npm run build --prefix frontend",
-    "start": "npm run start --prefix backend"
+    "postinstall": "npm --prefix backend ci --omit=dev && npm --prefix frontend ci --include=dev",
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "smoke:aws": "npm --prefix backend run smoke:aws",
+    "start": "npm --prefix backend start"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

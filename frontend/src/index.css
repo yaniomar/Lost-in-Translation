@@ -137,6 +137,9 @@ h1 span { color: var(--lilac); }
 .result-copy strong { font-size: 12px; }
 .result-copy span { color: #b2a5bf; font-size: 10px; overflow-wrap: anywhere; }
 .result-copy b { color: #e3d1ef; font-weight: 600; }
+.result-copy em { color: #f3bd78; font-size: 9px; font-style: normal; line-height: 1.45; }
+.result-offline { border-color: rgba(243,189,120,.42); background: rgba(130,83,34,.16); }
+.result-offline .result-stamp { border-color: rgba(243,189,120,.58); color: #ffd69b; }
 .icon-button { flex: 0 0 34px; width: 34px; height: 34px; display: grid; place-items: center; background: rgba(255,255,255,.035); border: 1px solid var(--line); border-radius: 7px; color: #c8b7d7; cursor: pointer; transition: .18s; }
 .icon-button:hover { background: rgba(168,85,247,.16); color: #fff; }
 .result-banner .icon-button { margin-left: auto; }

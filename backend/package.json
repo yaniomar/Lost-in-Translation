@@ -5,10 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test *.test.js",
+    "smoke:aws": "node scripts/aws-smoke-test.js",
+    "db:migrate": "node scripts/migrate-database.js"
   },
   "dependencies": {
+    "@aws-sdk/client-sts": "^3.1152.0",
     "@aws-sdk/client-translate": "^3.750.0",
+    "@aws-sdk/credential-provider-node": "^3.972.86",
+    "@neondatabase/serverless": "^1.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2"

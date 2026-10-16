@@ -15,8 +15,9 @@ import {
   Swords,
   X,
 } from 'lucide-react';
+import { DEFAULT_SENTENCE, getNewPlayerState } from './gameState.js';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 const emptyBoard = { guardians: [], glitchers: [] };
 const categoryLabels = {
   'من الفريق': 'Team',
@@ -32,7 +33,14 @@ async function request(path, options) {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options?.headers },
   });
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(response.ok
+      ? 'The local server returned an unreadable response.'
+      : `The local server returned an unexpected error (${response.status}).`);
+  }
   if (!response.ok) throw new Error(data.error || 'Something went wrong.');
   return data;
 }
@@ -72,7 +80,7 @@ function ScoreList({ title, subtitle, entries, type }) {
 
 function App() {
   const [mode, setMode] = useState('guardian');
-  const [sentence, setSentence] = useState('نزلت علامات المد والدكتور حكالي راجعني');
+  const [sentence, setSentence] = useState(DEFAULT_SENTENCE);
   const [playerName, setPlayerName] = useState('');
   const [presets, setPresets] = useState([]);
   const [leaderboard, setLeaderboard] = useState(emptyBoard);
@@ -87,14 +95,15 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState('');
   const [savingSentence, setSavingSentence] = useState(false);
+  const [offlineDemo, setOfflineDemo] = useState(null);
   const timerRef = useRef(null);
   const modalRef = useRef(null);
+  const roundInFlightRef = useRef(false);
 
   async function refreshData() {
     const [presetData, boardData] = await Promise.all([request('/api/presets'), request('/api/leaderboard')]);
     setPresets(presetData);
     setLeaderboard(boardData);
-    setError('');
   }
 
   useEffect(() => {
@@ -119,11 +128,27 @@ function App() {
     setActiveStep(-1);
     setIsPlaying(false);
     setError('');
+    setOfflineDemo(null);
+  }
+
+  function newPlayer() {
+    const next = getNewPlayerState();
+    window.clearTimeout(timerRef.current);
+    roundInFlightRef.current = false;
+    setPlayerName(next.playerName);
+    setSentence(next.sentence);
+    setPipeline(next.pipeline);
+    setActiveStep(next.activeStep);
+    setPlay(next.play);
+    setIsPlaying(next.isPlaying);
+    setError(next.error);
+    setOfflineDemo(next.offlineDemo);
   }
 
   async function startGame(event) {
     event.preventDefault();
-    if (isPlaying || !sentence.trim() || !playerName.trim()) return;
+    if (roundInFlightRef.current || isPlaying || !sentence.trim() || !playerName.trim()) return;
+    roundInFlightRef.current = true;
     resetRound();
     setIsPlaying(true);
     setError('');
@@ -134,6 +159,13 @@ function App() {
       });
       setPipeline(result.steps);
       setLeaderboard(result.leaderboard);
+      setOfflineDemo(result.offline?.active ? result.offline : null);
+      if (result.offline?.active) {
+        setPlay(result.play);
+        setActiveStep(-1);
+        setIsPlaying(false);
+        return;
+      }
       let stepIndex = 0;
       const advance = () => {
         setActiveStep(stepIndex);
@@ -149,6 +181,8 @@ function App() {
     } catch (requestError) {
       setError(requestError.message);
       setIsPlaying(false);
+    } finally {
+      roundInFlightRef.current = false;
     }
   }
 
@@ -227,7 +261,7 @@ function App() {
             </div>
             <div className="form-bottomline">
               <label className="player-field"><span>Player name <b aria-hidden="true">*</b></span><input required value={playerName} onChange={(event) => setPlayerName(event.target.value.slice(0, 30))} placeholder="e.g. Alex" maxLength={30} disabled={isPlaying} /><small>Name required for the leaderboard</small></label>
-              <button className={`start-button ${guardian ? 'guardian-cta' : 'glitcher-cta'}`} type="submit" disabled={isPlaying || !sentence.trim()}>
+              <button className={`start-button ${guardian ? 'guardian-cta' : 'glitcher-cta'}`} type="submit" disabled={isPlaying || !sentence.trim() || !playerName.trim()}>
                   {isPlaying ? <><LoaderCircle className="spin" size={18} /> Translating...</> : <>{guardian ? <Shield size={18} /> : <Flame size={18} />} Start challenge <ArrowRight size={17} /></>}
               </button>
             </div>
@@ -238,7 +272,7 @@ function App() {
             <div className="pipeline-heading">
               <div><span className="pipeline-label">Fixed translation route</span><span className="pipeline-meta">AR <i /> JP <i /> RU <i /> FR <i /> EN <i /> AR</span></div>
               <span className={`pipeline-status ${isPlaying ? 'status-running' : play ? 'status-done' : ''}`}>
-                {isPlaying ? <><span className="status-pulse" /> IN TRANSIT</> : play ? <><Check size={13} /> ROUTE COMPLETE</> : <><CircleHelp size={14} /> AWAITING SENTENCE</>}
+                {isPlaying ? <><span className="status-pulse" /> IN TRANSIT</> : offlineDemo ? <><CircleHelp size={14} /> PRERECORDED DEMO</> : play ? <><Check size={13} /> ROUTE COMPLETE</> : <><CircleHelp size={14} /> AWAITING SENTENCE</>}
               </span>
             </div>
             <div className="route-line" aria-hidden="true"><span style={{ width: `${activeStep < 0 ? 0 : (activeStep + 1) * 20}%` }} /></div>
@@ -256,10 +290,14 @@ function App() {
                 </article>
               ))}
             </div>
-            {play && <div className={`result-banner ${guardian ? 'result-guardian' : 'result-glitcher'}`}>
+            {play && <div className={`result-banner ${guardian ? 'result-guardian' : 'result-glitcher'} ${offlineDemo ? 'result-offline' : ''}`}>
               <div className="result-stamp">{play.similarity}<small>%</small></div>
-              <div className="result-copy"><strong>{scoreMessage}</strong><span>Final Arabic: <b dir="rtl">{play.finalArabic}</b></span></div>
-              <IconButton label="New round" onClick={resetRound}><RotateCcw size={17} /></IconButton>
+              <div className="result-copy">
+                <strong>{offlineDemo ? offlineDemo.label : scoreMessage}</strong>
+                <span>Final Arabic: <b dir="rtl">{play.finalArabic}</b></span>
+                {offlineDemo && <em>{offlineDemo.message}</em>}
+              </div>
+              <IconButton label="New player" onClick={newPlayer}><RotateCcw size={17} /></IconButton>
             </div>}
           </section>
         </section>

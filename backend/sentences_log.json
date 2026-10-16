@@ -26,6 +26,29 @@
       "category": "طلاب"
     }
   ],
+  "offlineExamples": [
+    {
+      "id": "recorded-a9142178",
+      "sourcePlayId": "a9142178-1122-42f2-9287-c70d02e62d27",
+      "original": "بدي أنزل مادة بس الشعبة مسكرة وكل ما أفتح رتاج بعلق",
+      "finalArabic": "أود تنزيل بعض المستندات، لكن هذا القسم يتوقف عن الاستجابة، وفي كل مرة أفتح فيها برنامج Rtaj، يتوقف البرنامج عن الاستجابة",
+      "similarity": 28,
+      "recordedAt": "2026-10-15T22:02:00.244Z"
+    },
+    {
+      "id": "recorded-ddb07262",
+      "sourcePlayId": "ddb07262-c84d-4711-b39d-5ca9bb85cb9a",
+      "original": "نزلت علامات المد والدكتور حكالي راجعني",
+      "finalArabic": "ظهرت أولى بوادر المد والجزر، وعاد الدكتور هاكاري إليّ",
+      "similarity": 40,
+      "recordedAt": "2026-10-15T21:59:03.564Z"
+    }
+  ],
+  "usage": {
+    "awsRequestsAttempted": 0,
+    "translatedCharactersSubmitted": 0
+  },
+  "playerAttempts": {},
   "plays": [
     {
       "id": "a9142178-1122-42f2-9287-c70d02e62d27",
