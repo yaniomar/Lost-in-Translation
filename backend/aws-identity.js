@@ -51,6 +51,16 @@ function credentialFingerprint(credentials, sourceLabel) {
     .digest('hex');
 }
 
+function normalizeCredentials(credentials) {
+  const accessKeyId = credentials.accessKeyId?.trim();
+  const secretAccessKey = credentials.secretAccessKey?.trim();
+  const sessionToken = credentials.sessionToken?.trim() || undefined;
+  if (accessKeyId === credentials.accessKeyId
+    && secretAccessKey === credentials.secretAccessKey
+    && sessionToken === credentials.sessionToken) return credentials;
+  return { ...credentials, accessKeyId, secretAccessKey, sessionToken };
+}
+
 function safeCredentialError(source, cause) {
   const code = source.profile ? 'AWS_PROFILE_UNAVAILABLE' : 'AWS_CREDENTIALS_UNAVAILABLE';
   const message = source.profile
@@ -59,6 +69,37 @@ function safeCredentialError(source, cause) {
   const error = new AwsIdentityError(message, code);
   error.cause = cause;
   return error;
+}
+
+function diagnosticToken(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value) ? value : undefined;
+}
+
+function awsFailureDiagnostic(cause, context) {
+  const metadata = cause?.$metadata || {};
+  return {
+    operation: context.operation,
+    region: diagnosticToken(context.region),
+    credentialSource: context.credentialSource,
+    hasSessionToken: context.hasSessionToken,
+    environmentCredentialWhitespace: context.environmentCredentialWhitespace,
+    timeoutMs: context.timeoutMs,
+    timedOut: context.timedOut,
+    errorName: diagnosticToken(cause?.name),
+    errorCode: diagnosticToken(cause?.Code || cause?.code),
+    networkErrorCode: diagnosticToken(cause?.cause?.code),
+    httpStatusCode: Number.isSafeInteger(metadata.httpStatusCode) ? metadata.httpStatusCode : undefined,
+    requestId: diagnosticToken(metadata.requestId),
+    attempts: Number.isSafeInteger(metadata.attempts) ? metadata.attempts : undefined,
+  };
+}
+
+function logAwsFailure(logger, event, cause, context) {
+  try {
+    logger.error(event, awsFailureDiagnostic(cause, context));
+  } catch {
+    // Diagnostics must never replace the safe application error.
+  }
 }
 
 export function createAwsIdentityGuard(config, options = {}) {
@@ -70,13 +111,29 @@ export function createAwsIdentityGuard(config, options = {}) {
   const cache = new Map();
   const cacheTtlMs = options.cacheTtlMs ?? 5 * 60 * 1000;
   const now = options.now || (() => Date.now());
+  const logger = options.logger || console;
+  const environmentCredentialWhitespace = [
+    env.AWS_ACCESS_KEY_ID,
+    env.AWS_SECRET_ACCESS_KEY,
+    env.AWS_SESSION_TOKEN,
+  ].some((value) => typeof value === 'string' && value !== value.trim());
 
   return async function verifyAwsIdentity() {
     const source = credentialSource(config, env);
     let credentials;
     try {
       credentials = await credentialProviderFactory(source)();
+      credentials = normalizeCredentials(credentials);
     } catch (cause) {
+      logAwsFailure(logger, 'AWS credential resolution failed', cause, {
+        operation: 'ResolveCredentials',
+        region: config.region,
+        credentialSource: source.profile ? 'profile' : 'environment',
+        hasSessionToken: Boolean(env.AWS_SESSION_TOKEN),
+        environmentCredentialWhitespace,
+        timeoutMs: undefined,
+        timedOut: false,
+      });
       throw safeCredentialError(source, cause);
     }
 
@@ -100,6 +157,15 @@ export function createAwsIdentityGuard(config, options = {}) {
         abortSignal: controller.signal,
       });
     } catch (cause) {
+      logAwsFailure(logger, 'AWS STS identity verification failed', cause, {
+        operation: 'GetCallerIdentity',
+        region: config.region,
+        credentialSource: source.profile ? 'profile' : 'environment',
+        hasSessionToken: Boolean(credentials.sessionToken),
+        environmentCredentialWhitespace,
+        timeoutMs: config.awsRequestTimeoutMs,
+        timedOut: controller.signal.aborted,
+      });
       const error = new AwsIdentityError(
         'The configured AWS identity could not be verified with STS.',
         'AWS_IDENTITY_UNVERIFIED',

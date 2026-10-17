@@ -168,17 +168,29 @@ test('never falls back to the default AWS profile when no explicit source is con
 
 test('returns a clear error when the named profile cannot be loaded', async () => {
   let stsCalls = 0;
+  const logs = [];
   const guard = createAwsIdentityGuard(config(), {
     env: { AWS_PROFILE: 'devfest-translate' },
-    credentialProviderFactory: () => async () => { throw new Error('private provider detail'); },
+    credentialProviderFactory: () => async () => {
+      const error = new Error('private provider detail');
+      error.name = 'CredentialsProviderError';
+      error.code = 'PROFILE_LOAD_FAILED';
+      throw error;
+    },
     stsClientFactory: () => ({
       async send() { stsCalls += 1; return { Account: devfestAccountId }; },
       destroy() {},
     }),
+    logger: { error: (event, diagnostic) => logs.push({ event, diagnostic }) },
   });
   await assert.rejects(guard, (error) => error.code === 'AWS_PROFILE_UNAVAILABLE'
     && !error.message.includes('private provider detail'));
   assert.equal(stsCalls, 0);
+  assert.equal(logs[0].event, 'AWS credential resolution failed');
+  assert.equal(logs[0].diagnostic.errorName, 'CredentialsProviderError');
+  assert.equal(logs[0].diagnostic.errorCode, 'PROFILE_LOAD_FAILED');
+  assert.equal(logs[0].diagnostic.credentialSource, 'profile');
+  assert.doesNotMatch(JSON.stringify(logs), /private provider detail|devfest-translate/);
 });
 
 test('caches only the same verified credential identity and rechecks changed credentials', async () => {
@@ -198,6 +210,127 @@ test('caches only the same verified credential identity and rechecks changed cre
   accessKeyId = 'DEVFESTKEYTWO';
   assert.equal((await guard()).account, devfestAccountId);
   assert.equal(stsCalls, 2);
+});
+
+test('normalizes accidental surrounding whitespace in resolved environment credentials', async () => {
+  let stsCredentials;
+  const guard = createAwsIdentityGuard(config(), {
+    env: {
+      AWS_ACCESS_KEY_ID: '  configured  ',
+      AWS_SECRET_ACCESS_KEY: '  configured  ',
+      AWS_SESSION_TOKEN: '  configured  ',
+    },
+    credentialProviderFactory: () => async () => ({
+      accessKeyId: '  DEVFEST_KEY  ',
+      secretAccessKey: '  DEVFEST_SECRET  ',
+      sessionToken: '  DEVFEST_TOKEN  ',
+    }),
+    stsClientFactory: ({ credentials }) => {
+      stsCredentials = credentials;
+      return {
+        async send() { return { Account: devfestAccountId }; },
+        destroy() {},
+      };
+    },
+  });
+
+  assert.equal((await guard()).account, devfestAccountId);
+  assert.deepEqual(stsCredentials, {
+    accessKeyId: 'DEVFEST_KEY',
+    secretAccessKey: 'DEVFEST_SECRET',
+    sessionToken: 'DEVFEST_TOKEN',
+  });
+});
+
+test('logs only allowlisted STS failure diagnostics and preserves the safe client error', async () => {
+  const logs = [];
+  const credentials = {
+    accessKeyId: 'DEVFEST_TEST_ACCESS_KEY',
+    secretAccessKey: 'DEVFEST_TEST_SECRET_KEY',
+    sessionToken: 'DEVFEST_TEST_SESSION_TOKEN',
+  };
+  let stsConfig;
+  const guard = createAwsIdentityGuard(config(), {
+    env: { AWS_ACCESS_KEY_ID: 'configured', AWS_SECRET_ACCESS_KEY: 'configured' },
+    credentialProviderFactory: () => async () => credentials,
+    stsClientFactory: (clientConfig) => {
+      stsConfig = clientConfig;
+      return {
+        async send() {
+          const error = new Error('private message containing DEVFEST_TEST_SECRET_KEY');
+          error.name = 'InvalidClientTokenId';
+          error.code = 'ERR_AWS_STS';
+          error.$metadata = {
+            httpStatusCode: 403,
+            requestId: 'safe-request-id',
+            attempts: 1,
+          };
+          throw error;
+        },
+        destroy() {},
+      };
+    },
+    logger: { error: (event, diagnostic) => logs.push({ event, diagnostic }) },
+  });
+
+  await assert.rejects(guard, (error) => error.code === 'AWS_IDENTITY_UNVERIFIED'
+    && error.message === 'The configured AWS identity could not be verified with STS.');
+  assert.equal(stsConfig.region, 'us-east-1');
+  assert.equal(stsConfig.credentials, credentials);
+  assert.equal(stsConfig.maxAttempts, 1);
+  assert.deepEqual(logs, [{
+    event: 'AWS STS identity verification failed',
+    diagnostic: {
+      operation: 'GetCallerIdentity',
+      region: 'us-east-1',
+      credentialSource: 'environment',
+      hasSessionToken: true,
+      environmentCredentialWhitespace: false,
+      timeoutMs: 8000,
+      timedOut: false,
+      errorName: 'InvalidClientTokenId',
+      errorCode: 'ERR_AWS_STS',
+      networkErrorCode: undefined,
+      httpStatusCode: 403,
+      requestId: 'safe-request-id',
+      attempts: 1,
+    },
+  }]);
+  const serializedLogs = JSON.stringify(logs);
+  assert.doesNotMatch(serializedLogs, /DEVFEST_TEST_(?:ACCESS|SECRET|SESSION)/);
+  assert.doesNotMatch(serializedLogs, /private message/);
+});
+
+test('reports an STS abort as a sanitized timeout diagnostic', async () => {
+  const logs = [];
+  const keepAlive = setInterval(() => {}, 100);
+  const guard = createAwsIdentityGuard(config({ awsRequestTimeoutMs: 5 }), {
+    env: { AWS_PROFILE: 'devfest-translate' },
+    credentialProviderFactory: () => async () => ({
+      accessKeyId: 'DEVFEST_TIMEOUT_KEY', secretAccessKey: 'DEVFEST_TIMEOUT_SECRET',
+    }),
+    stsClientFactory: () => ({
+      send(_command, { abortSignal }) {
+        return new Promise((_resolve, reject) => abortSignal.addEventListener('abort', () => {
+          const error = new Error('request timed out with private details');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true }));
+      },
+      destroy() {},
+    }),
+    logger: { error: (event, diagnostic) => logs.push({ event, diagnostic }) },
+  });
+
+  try {
+    await assert.rejects(guard, (error) => error.code === 'AWS_IDENTITY_UNVERIFIED');
+    assert.equal(logs[0].diagnostic.timedOut, true);
+    assert.equal(logs[0].diagnostic.errorName, 'AbortError');
+    assert.equal(logs[0].diagnostic.timeoutMs, 5);
+    assert.doesNotMatch(JSON.stringify(logs), /DEVFEST_TIMEOUT|private details/);
+  } finally {
+    clearInterval(keepAlive);
+  }
 });
 
 test('enforces quota before a call and never exceeds the cap', async (t) => {
