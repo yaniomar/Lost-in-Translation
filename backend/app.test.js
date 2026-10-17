@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -64,6 +65,30 @@ async function postPlay(baseUrl, body, headers = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
+  });
+}
+
+async function postPlayWithHost(baseUrl, body, headers) {
+  const target = new URL('/api/play', baseUrl);
+  const payload = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), ...headers },
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const responseBody = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          status: response.statusCode,
+          headers: new Headers(response.headers),
+          json: async () => JSON.parse(responseBody),
+        });
+      });
+    });
+    request.on('error', reject);
+    request.end(payload);
   });
 }
 
@@ -351,6 +376,81 @@ test('restricts origins, throttles APIs, and returns safe parser errors', async 
   const limited = await fetch(`${baseUrl}/api/presets`);
   assert.equal(limited.status, 429);
   assert.equal((await limited.json()).code, 'API_RATE_LIMITED');
+});
+
+test('accepts a legitimate Vercel same-origin POST', async (t) => {
+  const deploymentHost = 'lost-in-translation-example.vercel.app';
+  const { baseUrl } = await withServer(t, {
+    appOptions: {
+      config: loadConfig({
+        OFFLINE_MODE: 'disabled',
+        DEVFEST_AWS_ACCOUNT_ID: devfestAccountId,
+        VERCEL_URL: deploymentHost,
+      }),
+      translateStage: async ({ text }) => text,
+    },
+  });
+  const response = await postPlayWithHost(baseUrl, {
+    mode: 'guardian', sentence: 'مرحبا', playerName: 'Vercel Player',
+  }, {
+    Origin: `https://${deploymentHost}`,
+    Host: deploymentHost,
+  });
+  assert.equal(response.status, 201);
+  assert.equal(response.headers.get('access-control-allow-origin'), `https://${deploymentHost}`);
+});
+
+test('rejects unauthorized cross-origin POST requests', async (t) => {
+  const { baseUrl } = await withServer(t, {
+    appOptions: { config: config(), translateStage: async ({ text }) => text },
+  });
+  const response = await postPlayWithHost(baseUrl, {
+    mode: 'guardian', sentence: 'مرحبا', playerName: 'Blocked Player',
+  }, { Origin: 'https://untrusted.example' });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, 'ORIGIN_NOT_ALLOWED');
+});
+
+test('keeps localhost and configured CORS origins working', async (t) => {
+  const configuredOrigin = 'https://booth.example.edu';
+  const { baseUrl } = await withServer(t, {
+    appOptions: {
+      config: config({
+        allowedOrigins: ['http://localhost:5173', configuredOrigin],
+      }),
+      translateStage: async ({ text }) => text,
+    },
+  });
+  const localhost = await fetch(`${baseUrl}/api/presets`, {
+    headers: { Origin: 'http://localhost:5173' },
+  });
+  const configured = await fetch(`${baseUrl}/api/presets`, {
+    headers: { Origin: configuredOrigin },
+  });
+  assert.equal(localhost.status, 200);
+  assert.equal(localhost.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.equal(configured.status, 200);
+  assert.equal(configured.headers.get('access-control-allow-origin'), configuredOrigin);
+});
+
+test('does not trust forwarded host headers to authorize an origin', async (t) => {
+  const deploymentHost = 'lost-in-translation-example.vercel.app';
+  const { baseUrl } = await withServer(t, {
+    appOptions: {
+      config: config({ vercelHostnames: [deploymentHost] }),
+      translateStage: async ({ text }) => text,
+    },
+  });
+  const response = await postPlayWithHost(baseUrl, {
+    mode: 'guardian', sentence: 'مرحبا', playerName: 'Spoof Test',
+  }, {
+    Origin: `https://${deploymentHost}`,
+    Host: 'attacker.example',
+    'X-Forwarded-Host': deploymentHost,
+    'X-Forwarded-Proto': 'https',
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, 'ORIGIN_NOT_ALLOWED');
 });
 
 test('protects sentence-bank mutation with validation, duplicate checks, and its own throttle', async (t) => {

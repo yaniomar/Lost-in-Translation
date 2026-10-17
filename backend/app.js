@@ -37,6 +37,12 @@ function integerSetting(env, name, fallback, { minimum = 0 } = {}) {
   return parsed;
 }
 
+function vercelHostnames(env) {
+  return [env.VERCEL_URL, env.VERCEL_BRANCH_URL, env.VERCEL_PROJECT_PRODUCTION_URL]
+    .map((hostname) => (hostname || '').trim().toLowerCase())
+    .filter((hostname) => hostname && !hostname.includes('/') && !hostname.includes(':'));
+}
+
 export function loadConfig(env = process.env) {
   const offlineMode = (env.OFFLINE_MODE || 'auto').trim().toLowerCase();
   const devfestAwsAccountId = (env.DEVFEST_AWS_ACCOUNT_ID || '').trim();
@@ -71,6 +77,7 @@ export function loadConfig(env = process.env) {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    vercelHostnames: vercelHostnames(env),
     offlineMode,
     databaseUrl,
   };
@@ -264,21 +271,35 @@ export async function createBoothApp(options = {}) {
   const app = express();
   app.disable('x-powered-by');
   const allowedOrigins = new Set(config.allowedOrigins);
+  const allowedVercelHostnames = new Set(config.vercelHostnames || []);
+  function isOriginAllowed(request, origin = request.get('Origin')) {
+    if (!origin || allowedOrigins.has(origin)) return true;
+    if (!allowedVercelHostnames.size) return false;
+
+    try {
+      const originUrl = new URL(origin);
+      const requestHost = (request.get('Host') || '').toLowerCase();
+      return originUrl.protocol === 'https:'
+        && !originUrl.port
+        && originUrl.host.toLowerCase() === requestHost
+        && allowedVercelHostnames.has(originUrl.hostname.toLowerCase());
+    } catch {
+      return false;
+    }
+  }
   app.use('/api', (request, response, next) => {
     const origin = request.get('Origin');
-    if (origin && !allowedOrigins.has(origin)) {
+    if (!isOriginAllowed(request, origin)) {
       return response.status(403).json({ error: 'This origin is not allowed.', code: 'ORIGIN_NOT_ALLOWED' });
     }
     return next();
   });
-  app.use(cors({
-    origin(origin, callback) {
-      callback(null, !origin || allowedOrigins.has(origin));
-    },
+  app.use(cors((request, callback) => callback(null, {
+    origin: isOriginAllowed(request),
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
     maxAge: 600,
-  }));
+  })));
   app.use(express.json({ limit: '32kb', strict: true }));
   app.use('/api', makeRateLimiter({
     max: config.apiRateLimitMax,
