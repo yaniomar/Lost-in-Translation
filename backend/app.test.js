@@ -378,15 +378,11 @@ test('restricts origins, throttles APIs, and returns safe parser errors', async 
   assert.equal((await limited.json()).code, 'API_RATE_LIMITED');
 });
 
-test('accepts a legitimate Vercel same-origin POST', async (t) => {
-  const deploymentHost = 'lost-in-translation-example.vercel.app';
+test('accepts a same-origin POST from the actual Vercel deployment hostname', async (t) => {
+  const deploymentHost = 'lost-in-translation-dwkbpwvtq-yanal-omars-projects.vercel.app';
   const { baseUrl } = await withServer(t, {
     appOptions: {
-      config: loadConfig({
-        OFFLINE_MODE: 'disabled',
-        DEVFEST_AWS_ACCOUNT_ID: devfestAccountId,
-        VERCEL_URL: deploymentHost,
-      }),
+      config: config({ isVercel: true, vercelHostnames: [] }),
       translateStage: async ({ text }) => text,
     },
   });
@@ -407,6 +403,24 @@ test('rejects unauthorized cross-origin POST requests', async (t) => {
   const response = await postPlayWithHost(baseUrl, {
     mode: 'guardian', sentence: 'مرحبا', playerName: 'Blocked Player',
   }, { Origin: 'https://untrusted.example' });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, 'ORIGIN_NOT_ALLOWED');
+});
+
+test('does not enable the Vercel hostname fallback outside Vercel', async (t) => {
+  const deploymentHost = 'unrelated-project.vercel.app';
+  const { baseUrl } = await withServer(t, {
+    appOptions: {
+      config: config({ isVercel: false, vercelHostnames: [] }),
+      translateStage: async ({ text }) => text,
+    },
+  });
+  const response = await postPlayWithHost(baseUrl, {
+    mode: 'guardian', sentence: 'مرحبا', playerName: 'Local Spoof Test',
+  }, {
+    Origin: `https://${deploymentHost}`,
+    Host: deploymentHost,
+  });
   assert.equal(response.status, 403);
   assert.equal((await response.json()).code, 'ORIGIN_NOT_ALLOWED');
 });

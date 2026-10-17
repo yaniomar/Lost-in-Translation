@@ -77,6 +77,7 @@ export function loadConfig(env = process.env) {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    isVercel: env.VERCEL === '1',
     vercelHostnames: vercelHostnames(env),
     offlineMode,
     databaseUrl,
@@ -274,15 +275,17 @@ export async function createBoothApp(options = {}) {
   const allowedVercelHostnames = new Set(config.vercelHostnames || []);
   function isOriginAllowed(request, origin = request.get('Origin')) {
     if (!origin || allowedOrigins.has(origin)) return true;
-    if (!allowedVercelHostnames.size) return false;
+    if (!allowedVercelHostnames.size && !config.isVercel) return false;
 
     try {
       const originUrl = new URL(origin);
       const requestHost = (request.get('Host') || '').toLowerCase();
-      return originUrl.protocol === 'https:'
+      const isSameOrigin = originUrl.protocol === 'https:'
         && !originUrl.port
-        && originUrl.host.toLowerCase() === requestHost
-        && allowedVercelHostnames.has(originUrl.hostname.toLowerCase());
+        && originUrl.host.toLowerCase() === requestHost;
+      const originHostname = originUrl.hostname.toLowerCase();
+      return isSameOrigin && (allowedVercelHostnames.has(originHostname)
+        || (config.isVercel && originHostname.endsWith('.vercel.app')));
     } catch {
       return false;
     }
