@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, AudioLines, BadgePlus, BookOpen, Check, ChevronDown,
+  ArrowLeft, ArrowRight, AudioLines, BookOpen, Check,
   CircleHelp, ExternalLink, Eye, Flame, HelpCircle, Home, LoaderCircle, Medal,
-  PlayCircle, RotateCcw, Search, Shield, Sparkles, Swords, Trophy, X,
+  PlayCircle, RotateCcw, Shield, Sparkles, Swords, Trophy, X,
 } from 'lucide-react';
 import {
-  AWS_RESOURCES, AWS_VIDEO_TITLES, claimRoundSubmission, DEFAULT_SENTENCE, dismissWelcome,
+  AWS_RESOURCES, AWS_VIDEOS, claimRoundSubmission, DEFAULT_SENTENCE, dismissWelcome,
   getNewPlayerState, isExceptionalScore, pageFromPath, podiumRank, releaseRoundSubmission,
   scoreMessage, shouldShowWelcome,
 } from './gameState.js';
@@ -19,11 +19,6 @@ const stagePlaceholders = [
   { key: 'english', language: 'English', flag: '🇬🇧' },
   { key: 'arabic', language: 'Arabic', flag: '🇵🇸' },
 ];
-const categoryLabels = {
-  'من الفريق': 'Team', 'أكاديمي': 'Academic', 'رتاج': 'Ritaj', 'الحرم': 'Campus',
-  'مواصلات': 'Transport', 'طلاب': 'Student life',
-};
-
 async function request(path, options) {
   const response = await fetch(`${API}${path}`, {
     ...options,
@@ -37,7 +32,11 @@ async function request(path, options) {
       ? 'The server returned an unreadable response.'
       : `The server returned an unexpected error (${response.status}).`);
   }
-  if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+  if (!response.ok) {
+    const requestError = new Error(data.error || 'Something went wrong.');
+    requestError.code = data.code;
+    throw requestError;
+  }
   return data;
 }
 
@@ -193,7 +192,11 @@ function ChallengeModal({ activeStep, error, isPlaying, offlineDemo, onClose, on
               <ArrowRight className="compare-arrow" size={22} />
               <div className="final-sentence"><span>Returned as</span><p dir="rtl">{play.finalArabic}</p></div>
             </div>
-            <button type="button" className="education-link" onClick={onEducation}><BookOpen size={15} /> How does this game work? Discover the AWS technology behind it <ArrowRight size={14} /></button>
+            <button type="button" className="education-link" onClick={onEducation}>
+              <span className="education-link-icon"><BookOpen size={20} /></span>
+              <span className="education-link-copy"><strong>How does this game work?</strong><small>Discover the AWS technology behind it</small></span>
+              <ArrowRight className="education-link-arrow" size={18} />
+            </button>
             <div className="result-actions">
               <button type="button" className="secondary-button" onClick={onLeaderboard}><Trophy size={17} /> View leaderboard</button>
               <button type="button" className={`start-button ${guardian ? 'guardian-cta' : 'glitcher-cta'}`} onClick={onNewPlayer}><RotateCcw size={17} /> New player</button>
@@ -205,31 +208,24 @@ function ChallengeModal({ activeStep, error, isPlaying, offlineDemo, onClose, on
   );
 }
 
-function InfoModal({ onClose }) {
-  const dialogRef = useRef(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    dialogRef.current?.focus();
-    function onKeyDown(event) { keepFocusInside(event, dialogRef.current); if (event.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKeyDown);
-    return () => { window.removeEventListener('keydown', onKeyDown); previousFocus?.focus?.(); };
-  }, [onClose]);
-
+function InfoPage({ onBack }) {
   return (
-    <div className="overlay info-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="dialog info-dialog" role="dialog" aria-modal="true" aria-labelledby="info-title" tabIndex={-1} ref={dialogRef}>
-        <div className="dialog-heading info-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> BEHIND THE GAME</span><h2 id="info-title">How AWS powers the journey</h2></div><IconButton label="Close AWS explanation" onClick={onClose}><X size={19} /></IconButton></div>
+    <section className="info-page" aria-labelledby="info-title">
+      <div className="info-page-header">
+        <div><span className="eyebrow"><span className="eyebrow-line" /> BEHIND THE GAME</span><h1 id="info-title">How AWS powers the journey</h1><p>Follow one sentence through the technology that makes every round possible.</p></div>
+        <button type="button" className="secondary-button info-back" onClick={onBack}><ArrowLeft size={16} /> Back to game</button>
+      </div>
+      <div className="info-page-card">
         <div className="info-content">
           <section><h3><span>A</span> What is Lost in Translation?</h3><p>An Arabic sentence travels through five consecutive translations—Japanese, Russian, French, English, and back to Arabic. The experiment reveals how wording can change when machine translations are chained together.</p></section>
           <section><h3><span>B</span> Two ways to play</h3><div className="info-mode-grid"><p><b><Shield size={15} /> Meaning Guardian</b>Higher textual similarity wins.</p><p><b><Flame size={15} /> AI Glitcher</b>Lower textual similarity wins.</p></div><p>The score measures textual differences between the first and last sentences. It does not directly judge whether their meaning is the same.</p></section>
           <section><h3><span>C</span> What is Amazon Translate?</h3><p>Amazon Translate is an AWS machine translation service that uses machine learning to translate text between languages. It gives developers translation capabilities without requiring them to train their own AI models.</p></section>
           <section><h3><span>D</span> How we use AWS</h3><ol className="aws-steps"><li>The player submits an Arabic sentence.</li><li>The game sends it securely to its server.</li><li>The server authenticates with AWS.</li><li>It calls the Amazon Translate <code>TranslateText</code> API.</li><li>AWS returns the translated result.</li><li>That result becomes the next translation’s input.</li><li>The process repeats five times until the sentence returns to Arabic.</li><li>The game compares the first and last sentences and displays the score.</li></ol><p><strong>One completed live round makes exactly five sequential Amazon Translate requests.</strong> AWS performs each translation; the game calculates the similarity score. AWS Identity and Access Management (IAM) restricts what the game may access, while AWS Security Token Service (STS) verifies the AWS identity before translation begins.</p></section>
           <section><h3><span>E</span> Why is this interesting?</h3><p>Repeated translations can introduce different wording, ambiguity, and surprising results. This is a playful experiment: one low similarity score does not mean Amazon Translate is generally inaccurate.</p></section>
-          <section className="resource-section"><h3><span>F</span> Learn from AWS</h3><div className="resource-grid">{AWS_RESOURCES.map(([title, href]) => <a key={href} href={href} target="_blank" rel="noopener noreferrer"><BookOpen size={16} /><span>{title}</span><ExternalLink size={13} /></a>)}</div><h4><PlayCircle size={16} /> Recommended videos on the official resources page</h4><ul className="video-list">{AWS_VIDEO_TITLES.map((title) => <li key={title}><a href="https://aws.amazon.com/translate/resources/" target="_blank" rel="noopener noreferrer">{title}<ExternalLink size={12} /></a></li>)}</ul></section>
+          <section className="resource-section"><h3><span>F</span> Learn from AWS</h3><div className="resource-grid">{AWS_RESOURCES.map(([title, href]) => <a key={href} href={href} target="_blank" rel="noopener noreferrer"><BookOpen size={16} /><span>{title}</span><ExternalLink size={13} /></a>)}</div><h4><PlayCircle size={18} /> Watch Amazon Translate in action</h4><ul className="video-list">{AWS_VIDEOS.map((video) => <li key={video.href}><a href={video.href} target="_blank" rel="noopener noreferrer" aria-label={`Watch ${video.title} on YouTube`}><span className="video-thumb"><img src={video.thumbnail} alt="" loading="lazy" /><span className="video-play"><PlayCircle size={28} /></span><small>{video.duration}</small></span><span className="video-copy"><strong>{video.title}</strong><span>Watch video <ExternalLink size={12} /></span></span></a></li>)}</ul></section>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -248,7 +244,7 @@ function WelcomeModal({ onClose, onEducation }) {
       <section className="dialog welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcome-title" tabIndex={-1} ref={dialogRef}>
         <div className="welcome-visual" aria-hidden="true"><AudioLines size={30} /><span>AR</span><i /><span>JP</span><i /><span>RU</span><i /><span>FR</span><i /><span>EN</span><i /><span>AR</span></div>
         <div className="dialog-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> READY FOR THE RELAY?</span><h2 id="welcome-title">Welcome to Lost in Translation!</h2><p className="welcome-subtitle">One sentence. Five translations. Can you beat the AI?</p></div><IconButton label="Close welcome" onClick={onClose}><X size={19} /></IconButton></div>
-        <div className="welcome-content"><section><h3>What is the game?</h3><p>Enter an Arabic sentence and see how it changes after traveling through Japanese, Russian, French, English, and back to Arabic using Amazon Translate.</p></section><section><h3>Choose your challenge</h3><div className="welcome-modes"><p><b><Shield size={15} /> Meaning Guardian</b>Try to preserve your sentence. Higher similarity wins.</p><p><b><Flame size={15} /> AI Glitcher</b>Try to create the biggest wording change. Lower similarity wins.</p></div></section><section><h3>How to play</h3><ol className="play-steps"><li>Choose a game mode.</li><li>Enter an Arabic sentence or choose one from the Sentence Bank.</li><li>Enter your player name.</li><li>Press Start Challenge.</li><li>Watch all five translations and see your score.</li><li>Check the leaderboard.</li></ol></section></div>
+        <div className="welcome-content"><section><h3>What is the game?</h3><p>Enter an Arabic sentence and see how it changes after traveling through Japanese, Russian, French, English, and back to Arabic using Amazon Translate.</p></section><section><h3>Choose your challenge</h3><div className="welcome-modes"><p><b><Shield size={15} /> Meaning Guardian</b>Try to preserve your sentence. Higher similarity wins.</p><p><b><Flame size={15} /> AI Glitcher</b>Try to create the biggest wording change. Lower similarity wins.</p></div></section><section><h3>How to play</h3><ol className="play-steps"><li>Choose a game mode.</li><li>Enter an Arabic sentence.</li><li>Enter your player name.</li><li>Press Start Challenge.</li><li>Watch all five translations and see your score.</li><li>Check the leaderboard.</li></ol></section></div>
         <div className="welcome-actions"><button type="button" className="text-action" onClick={onEducation}><BookOpen size={16} /> Learn how AWS powers this game</button><button type="button" className="start-button guardian-cta" onClick={onClose}>Let’s Play! <ArrowRight size={17} /></button></div>
       </section>
     </div>
@@ -260,16 +256,9 @@ function App() {
   const [mode, setMode] = useState('guardian');
   const [sentence, setSentence] = useState(DEFAULT_SENTENCE);
   const [playerName, setPlayerName] = useState('');
-  const [presets, setPresets] = useState([]);
   const [leaderboard, setLeaderboard] = useState(emptyBoard);
-  const [showPresets, setShowPresets] = useState(false);
-  const [showLogger, setShowLogger] = useState(false);
   const [showChallenge, setShowChallenge] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(() => shouldShowWelcome(window.sessionStorage));
-  const [showInfo, setShowInfo] = useState(false);
-  const [presetSearch, setPresetSearch] = useState('');
-  const [newSentence, setNewSentence] = useState('');
-  const [newCategory, setNewCategory] = useState('Team');
+  const [showWelcome, setShowWelcome] = useState(() => page === 'game' && shouldShowWelcome(window.sessionStorage));
   const [pipeline, setPipeline] = useState([]);
   const [activeStep, setActiveStep] = useState(-1);
   const [play, setPlay] = useState(null);
@@ -278,17 +267,14 @@ function App() {
   const [roundSnapshot, setRoundSnapshot] = useState(null);
   const [error, setError] = useState('');
   const [dataError, setDataError] = useState('');
-  const [loggerError, setLoggerError] = useState('');
-  const [savingSentence, setSavingSentence] = useState(false);
   const [offlineDemo, setOfflineDemo] = useState(null);
   const timerRef = useRef(null);
-  const modalRef = useRef(null);
   const startButtonRef = useRef(null);
   const roundInFlightRef = useRef(false);
 
   async function refreshData() {
-    const [presetData, boardData] = await Promise.all([request('/api/presets'), request('/api/leaderboard')]);
-    setPresets(presetData); setLeaderboard(boardData); setDataError('');
+    const boardData = await request('/api/leaderboard');
+    setLeaderboard(boardData); setDataError('');
   }
 
   useEffect(() => {
@@ -301,20 +287,10 @@ function App() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  useEffect(() => { if (showPresets || showLogger) modalRef.current?.focus(); }, [showPresets, showLogger]);
   useEffect(() => {
-    document.body.classList.toggle('modal-open', showPresets || showLogger || showChallenge || showWelcome || showInfo);
+    document.body.classList.toggle('modal-open', showChallenge || showWelcome);
     return () => document.body.classList.remove('modal-open');
-  }, [showPresets, showLogger, showChallenge, showWelcome, showInfo]);
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (event.key !== 'Escape') return;
-      if (showPresets) setShowPresets(false);
-      if (showLogger) setShowLogger(false);
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showPresets, showLogger]);
+  }, [showChallenge, showWelcome]);
 
   function navigate(path) {
     if (window.location.pathname !== path) window.history.pushState({}, '', path);
@@ -326,11 +302,10 @@ function App() {
     setShowWelcome(false);
     window.setTimeout(() => startButtonRef.current?.focus(), 0);
   }, []);
-  const welcomeToEducation = useCallback(() => {
+  function welcomeToEducation() {
     dismissWelcome(window.sessionStorage);
-    setShowWelcome(false); setShowInfo(true);
-  }, []);
-  const closeInfo = useCallback(() => setShowInfo(false), []);
+    setShowWelcome(false); navigate('/how-it-works');
+  }
   function resetRound() {
     window.clearTimeout(timerRef.current);
     setPlay(null); setPipeline([]); setActiveStep(-1); setIsPlaying(false); setError('');
@@ -380,19 +355,7 @@ function App() {
     const snapshot = { mode, sentence: sentence.trim(), playerName: playerName.trim() };
     setRoundSnapshot(snapshot); setShowChallenge(true); runRound(snapshot);
   }
-  async function addSentence(event) {
-    event.preventDefault(); setSavingSentence(true); setLoggerError('');
-    try {
-      const added = await request('/api/log-sentence', {
-        method: 'POST', body: JSON.stringify({ text: newSentence.trim(), category: newCategory }),
-      });
-      setPresets((current) => [added, ...current]); setNewSentence(''); setShowLogger(false);
-    } catch (requestError) { setLoggerError(requestError.message); }
-    finally { setSavingSentence(false); }
-  }
-
   const guardian = mode === 'guardian';
-  const filteredPresets = presets.filter((item) => item.text.includes(presetSearch.trim()));
   const canResume = !showChallenge && (play || challengePhase === 'error');
 
   return (
@@ -407,10 +370,11 @@ function App() {
           <a href="/leaderboard" className={page === 'leaderboard' ? 'active' : ''} onClick={(event) => { event.preventDefault(); navigate('/leaderboard'); }}><Trophy size={15} /> Leaderboard</a>
           <button type="button" aria-label="How to play" onClick={() => setShowWelcome(true)}><HelpCircle size={15} /> <span>How to play</span></button>
         </nav>
-        <button className="team-button" onClick={() => { setShowLogger(true); setLoggerError(''); }}><BadgePlus size={17} /> <span>Add a sentence</span></button>
       </header>
 
-      {page === 'leaderboard' ? <LeaderboardPage leaderboard={leaderboard} dataError={dataError} onBack={() => navigate('/')} /> : (
+      {page === 'leaderboard' ? <LeaderboardPage leaderboard={leaderboard} dataError={dataError} onBack={() => navigate('/')} /> : page === 'education' ? (
+        <InfoPage onBack={() => navigate('/')} />
+      ) : (
         <div className="game-main" id="home"><section className="game-column">
           <div className="intro-row game-intro"><div>
             <div className="eyebrow"><span className="eyebrow-line" /> THE TRANSLATION RELAY</div>
@@ -429,7 +393,7 @@ function App() {
             <div className="form-topline"><label htmlFor="sentence">Ready to send a sentence?</label><span><Sparkles size={14} /> YOUR TURN</span></div>
             <div className="sentence-wrap">
               <textarea id="sentence" dir="rtl" value={sentence} onChange={(event) => setSentence(event.target.value.slice(0, 150))} maxLength={150} placeholder="اكتب جملتك بالعربي هنا... (مثال: الدكتور مش منزل علامات المد)" disabled={isPlaying} required />
-              <div className="sentence-foot"><button type="button" className="quick-pick" onClick={() => { setShowPresets(true); setPresetSearch(''); }} disabled={isPlaying}><ChevronDown size={16} /> Sentence bank</button><span className={sentence.length > 135 ? 'count-near' : ''}>{sentence.length} / 150</span></div>
+              <div className="sentence-foot"><span className={sentence.length > 135 ? 'count-near' : ''}>{sentence.length} / 150</span></div>
             </div>
             <div className="form-bottomline">
               <label className="player-field"><span>Player name <b aria-hidden="true">*</b></span><input required value={playerName} onChange={(event) => setPlayerName(event.target.value.slice(0, 30))} placeholder="e.g. Alex" maxLength={30} disabled={isPlaying} /><small>Name required for the leaderboard</small></label>
@@ -442,26 +406,9 @@ function App() {
       )}
       <footer className="page-footer"><span>DEVFEST 2026 <i /> AWS CLUB · BIRZEIT UNIVERSITY</span><span>BOOTH 02 <i /> LOST IN TRANSLATION</span></footer>
 
-      {showChallenge && roundSnapshot && <ChallengeModal activeStep={activeStep} error={error} isPlaying={isPlaying} offlineDemo={offlineDemo} onClose={() => { if (!isPlaying) { setShowChallenge(false); startButtonRef.current?.focus(); } }} onEducation={() => setShowInfo(true)} onLeaderboard={() => navigate('/leaderboard')} onNewPlayer={newPlayer} onRetry={() => runRound(roundSnapshot)} phase={challengePhase} pipeline={pipeline} play={play} snapshot={roundSnapshot} />}
+      {showChallenge && roundSnapshot && <ChallengeModal activeStep={activeStep} error={error} isPlaying={isPlaying} offlineDemo={offlineDemo} onClose={() => { if (!isPlaying) { setShowChallenge(false); startButtonRef.current?.focus(); } }} onEducation={() => navigate('/how-it-works')} onLeaderboard={() => navigate('/leaderboard')} onNewPlayer={newPlayer} onRetry={() => runRound(roundSnapshot)} phase={challengePhase} pipeline={pipeline} play={play} snapshot={roundSnapshot} />}
 
-      {showWelcome && !showInfo && <WelcomeModal onClose={closeWelcome} onEducation={welcomeToEducation} />}
-      {showInfo && <InfoModal onClose={closeInfo} />}
-
-      {showPresets && <div className="overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPresets(false); }}><section className="dialog preset-dialog" role="dialog" aria-modal="true" aria-labelledby="preset-title" tabIndex={-1} ref={modalRef}>
-        <div className="dialog-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> QUICK PICK</span><h2 id="preset-title">Sentence bank</h2></div><IconButton label="Close" onClick={() => setShowPresets(false)}><X size={19} /></IconButton></div>
-        <label className="search-field"><Search size={17} /><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="Search Arabic sentences..." /></label>
-        <div className="preset-list">{filteredPresets.map((item) => <button key={item.id} className="preset-item" onClick={() => { setSentence(item.text); setShowPresets(false); resetRound(); }}><span className="preset-tag">{categoryLabels[item.category] || item.category}</span><span dir="rtl">{item.text}</span><ArrowRight size={15} /></button>)}{!filteredPresets.length && <p className="no-presets">No sentences found.</p>}</div>
-        <div className="dialog-bottom"><span>{presets.length} sentences</span><button className="text-action" onClick={() => { setShowPresets(false); setShowLogger(true); }}>Add a sentence <BadgePlus size={16} /></button></div>
-      </section></div>}
-
-      {showLogger && <div className="overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowLogger(false); }}><section className="dialog logger-dialog" role="dialog" aria-modal="true" aria-labelledby="logger-title" tabIndex={-1} ref={modalRef}>
-        <div className="dialog-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> TEAM CONTRIBUTION</span><h2 id="logger-title">Add to the sentence bank</h2></div><IconButton label="Close" onClick={() => setShowLogger(false)}><X size={19} /></IconButton></div>
-        <p className="dialog-description">Save a memorable campus moment for the next player.</p><form onSubmit={addSentence}>
-          <label className="dialog-label" htmlFor="new-sentence">Arabic sentence <span>{newSentence.length} / 150</span></label><textarea id="new-sentence" dir="rtl" className="logger-textarea" maxLength={150} value={newSentence} onChange={(event) => setNewSentence(event.target.value)} placeholder="Write a campus moment in Arabic..." autoFocus />
-          <label className="dialog-label" htmlFor="new-category">Category</label><select id="new-category" value={newCategory} onChange={(event) => setNewCategory(event.target.value)}><option>Team</option><option>Academic</option><option>Ritaj</option><option>Campus</option><option>Transport</option><option>Student life</option></select>
-          {loggerError && <p className="inline-error" role="alert">{loggerError}</p>}<button className="start-button logger-submit" type="submit" disabled={!newSentence.trim() || savingSentence}>{savingSentence ? <><LoaderCircle className="spin" size={17} /> Saving...</> : <>Save sentence <BadgePlus size={17} /></>}</button>
-        </form>
-      </section></div>}
+      {showWelcome && <WelcomeModal onClose={closeWelcome} onEducation={welcomeToEducation} />}
     </main>
   );
 }

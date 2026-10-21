@@ -106,7 +106,7 @@ export async function createJsonStore({ dataPath, normalizeText, now }) {
     },
     async beginRound({ playerId, playerName, maxAttempts }) {
       if (activeRounds.has(playerId)) {
-        throw new StorageError('A round is already active for this player.', 'ROUND_ALREADY_ACTIVE');
+        throw new StorageError('This player\'s previous translation is still finishing. Wait a moment, then retry. This prevents duplicate AWS requests.', 'ROUND_ALREADY_ACTIVE');
       }
       const completed = database.playerAttempts[playerId]?.completed || 0;
       if (completed >= maxAttempts) {
@@ -284,7 +284,7 @@ export function createPostgresStore({ connectionString, pool: suppliedPool, roun
           throw new StorageError(`This player has used all ${maxAttempts} competitive attempts.`, 'PLAYER_ATTEMPT_LIMIT');
         }
         if (row.round_active) {
-          throw new StorageError('A round is already active for this player.', 'ROUND_ALREADY_ACTIVE');
+          throw new StorageError('This player\'s previous translation is still finishing. Wait up to two minutes, then retry. This prevents duplicate AWS requests.', 'ROUND_ALREADY_ACTIVE');
         }
         const token = randomUUID();
         await client.query(`

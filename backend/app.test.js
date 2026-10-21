@@ -453,7 +453,9 @@ test('rejects a repeated submission while the same player round is active', asyn
   while (calls === 0) await new Promise((resolve) => setImmediate(resolve));
   const duplicate = await postPlay(baseUrl, { mode: 'guardian', sentence: 'مرحبا', playerName: ' same   player ' });
   assert.equal(duplicate.status, 409);
-  assert.equal((await duplicate.json()).code, 'ROUND_ALREADY_ACTIVE');
+  const duplicatePayload = await duplicate.json();
+  assert.equal(duplicatePayload.code, 'ROUND_ALREADY_ACTIVE');
+  assert.match(duplicatePayload.error, /prevents duplicate AWS requests/);
   release();
   assert.equal((await first).status, 201);
 });

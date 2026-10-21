@@ -8,14 +8,16 @@ export const AWS_RESOURCES = [
   ['Amazon Translate Getting Started with AWS SDK', 'https://docs.aws.amazon.com/translate/latest/dg/get-started-sdk.html'],
 ];
 
-export const AWS_VIDEO_TITLES = [
-  'What is Amazon Translate?',
-  'Introduction to Amazon Translate and Neural Machine Translation',
-  'Real-time Translation with Amazon Translate',
+export const AWS_VIDEOS = [
+  { title: 'What is Amazon Translate?', duration: '1:29', href: 'https://www.youtube.com/watch?v=ymbYmHz8B8E', thumbnail: 'https://i.ytimg.com/vi/ymbYmHz8B8E/hqdefault.jpg' },
+  { title: 'Introduction to Amazon Translate and Neural Machine Translation', duration: '6:17', href: 'https://www.youtube.com/watch?v=Mm4wQ2bdoQo', thumbnail: 'https://i.ytimg.com/vi/Mm4wQ2bdoQo/hqdefault.jpg' },
+  { title: 'Real-time Translation with Amazon Translate', duration: '3:22', href: 'https://www.youtube.com/watch?v=o7o5v01OOQM', thumbnail: 'https://i.ytimg.com/vi/o7o5v01OOQM/hqdefault.jpg' },
 ];
 
 export function pageFromPath(pathname) {
-  return pathname === '/leaderboard' ? 'leaderboard' : 'game';
+  if (pathname === '/leaderboard') return 'leaderboard';
+  if (pathname === '/how-it-works') return 'education';
+  return 'game';
 }
 
 export function claimRoundSubmission(lock) {

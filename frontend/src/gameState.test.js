@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  AWS_RESOURCES, AWS_VIDEO_TITLES, claimRoundSubmission, dismissWelcome, getNewPlayerState,
+  AWS_RESOURCES, AWS_VIDEOS, claimRoundSubmission, dismissWelcome, getNewPlayerState,
   isExceptionalScore, pageFromPath, podiumRank, releaseRoundSubmission, scoreMessage,
   shouldShowWelcome, WELCOME_SESSION_KEY,
 } from './gameState.js';
 
-test('routes direct leaderboard visits and falls back to the game', () => {
+test('routes direct page visits and falls back to the game', () => {
   assert.equal(pageFromPath('/leaderboard'), 'leaderboard');
+  assert.equal(pageFromPath('/how-it-works'), 'education');
   assert.equal(pageFromPath('/'), 'game');
   assert.equal(pageFromPath('/unexpected'), 'game');
 });
@@ -67,6 +68,8 @@ test('AWS education uses the required official documentation and resource links'
     'https://aws.amazon.com/translate/resources/',
     'https://docs.aws.amazon.com/translate/latest/dg/get-started-sdk.html',
   ]);
-  assert.equal(AWS_VIDEO_TITLES.length, 3);
-  assert.ok(AWS_VIDEO_TITLES.includes('Real-time Translation with Amazon Translate'));
+  assert.equal(AWS_VIDEOS.length, 3);
+  assert.equal(new Set(AWS_VIDEOS.map((video) => video.href)).size, 3);
+  assert.ok(AWS_VIDEOS.every((video) => video.href.startsWith('https://www.youtube.com/watch?v=')));
+  assert.ok(AWS_VIDEOS.some((video) => video.title === 'Real-time Translation with Amazon Translate'));
 });
