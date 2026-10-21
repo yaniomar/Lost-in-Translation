@@ -121,60 +121,6 @@
       "finalArabic": "نزلت علامات المد والدكتور حكالي راجعني",
       "similarity": 100,
       "createdAt": "2026-10-15T21:36:01.962Z"
-    },
-    {
-      "id": "seed-1",
-      "playerName": "ليان",
-      "mode": "guardian",
-      "original": "رحت عالكافتيريا أجيب قهوة ورجعت ومعي محاضرة جديدة",
-      "finalArabic": "رحت عالكافتيريا أجيب قهوة ورجعت ومعي محاضرة جديدة",
-      "similarity": 100,
-      "createdAt": "2026-10-15T09:20:00.000Z"
-    },
-    {
-      "id": "seed-2",
-      "playerName": "عمر",
-      "mode": "glitcher",
-      "original": "بدي أنزل مادة بس الشعبة مسكرة وكل ما أفتح رتاج بعلق",
-      "finalArabic": "وصلت الإشارة إلى المريخ ومعها مظلة زرقاء",
-      "similarity": 6,
-      "createdAt": "2026-10-15T09:24:00.000Z"
-    },
-    {
-      "id": "seed-3",
-      "playerName": "سارة",
-      "mode": "guardian",
-      "original": "طالع كعابي على كلية العلوم تحت الشتا",
-      "finalArabic": "طالع كعابي على كلية العلوم تحت الشتا",
-      "similarity": 100,
-      "createdAt": "2026-10-15T09:31:00.000Z"
-    },
-    {
-      "id": "seed-4",
-      "playerName": "يزن",
-      "mode": "glitcher",
-      "original": "نزلت علامات المد والدكتور حكالي راجعني",
-      "finalArabic": "البطريق يبحث عن مصعد في مدينة من البطيخ",
-      "similarity": 4,
-      "createdAt": "2026-10-15T09:38:00.000Z"
-    },
-    {
-      "id": "seed-5",
-      "playerName": "نور",
-      "mode": "guardian",
-      "original": "المواصلات وصلت قبل ما أطلع من البيت بدقيقة",
-      "finalArabic": "المواصلات وصلت قبل ما أطلع من البيت بدقيقة",
-      "similarity": 100,
-      "createdAt": "2026-10-15T09:42:00.000Z"
-    },
-    {
-      "id": "seed-6",
-      "playerName": "آدم",
-      "mode": "glitcher",
-      "original": "قعدت أدرس خمس دقايق وأخذت استراحة ساعتين",
-      "finalArabic": "سلحفاة تعزف كمان تحت المحيط",
-      "similarity": 8,
-      "createdAt": "2026-10-15T09:50:00.000Z"
     }
   ]
 }

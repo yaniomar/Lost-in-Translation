@@ -176,6 +176,16 @@ No Neon resources are created by this repository. In the Neon or Vercel Marketpl
 
 The migration applies `backend/db/schema.sql` and idempotently imports the existing presets, offline examples, leaderboard history, attempt counts, and the larger of the existing usage counters. It runs in one transaction and prints `PASS` only after commit. Running it again is safe, although new production data should be backed up before any future schema changes.
 
+### Verified demo-score cleanup
+
+The six original presentation rows (`seed-1` through `seed-6`) have been removed from the migration source so a later migration cannot recreate them. To inspect the matching production rows without changing the database, run:
+
+```powershell
+npm run db:cleanup-demo-scores
+```
+
+The command starts a transaction, matches every row against its verified ID, player, mode, score, and timestamp, prints the eligible rows and preserved-play count, then rolls back. Only after reviewing that dry run and receiving explicit approval, append `-- --execute`. The cleanup touches only the fingerprint-matched rows in `plays`; it does not modify presets, offline examples, player attempts, or AWS usage counters.
+
 To use Neon during local development, keep `DATABASE_URL` in `backend/.env` and run `npm run dev`. To return to the local JSON store, remove only the `DATABASE_URL` line and restart.
 
 ## Vercel Hobby preparation

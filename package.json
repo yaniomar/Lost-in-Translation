@@ -12,6 +12,7 @@
     "build": "npm --prefix frontend run build",
     "test": "npm --prefix backend test && npm --prefix frontend test",
     "db:migrate": "npm --prefix backend run db:migrate",
+    "db:cleanup-demo-scores": "npm --prefix backend run db:cleanup-demo-scores --",
     "smoke:aws": "npm --prefix backend run smoke:aws",
     "start": "npm --prefix backend start"
   },

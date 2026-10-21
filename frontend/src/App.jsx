@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, AudioLines, BadgePlus, Check, ChevronDown, CircleHelp,
-  Eye, Flame, Home, LoaderCircle, RotateCcw, Search, Shield, Sparkles, Swords,
-  Trophy, X,
+  ArrowLeft, ArrowRight, AudioLines, BadgePlus, BookOpen, Check, ChevronDown,
+  CircleHelp, ExternalLink, Eye, Flame, HelpCircle, Home, LoaderCircle, Medal,
+  PlayCircle, RotateCcw, Search, Shield, Sparkles, Swords, Trophy, X,
 } from 'lucide-react';
 import {
-  claimRoundSubmission, DEFAULT_SENTENCE, getNewPlayerState, pageFromPath, releaseRoundSubmission,
+  AWS_RESOURCES, AWS_VIDEO_TITLES, claimRoundSubmission, DEFAULT_SENTENCE, dismissWelcome,
+  getNewPlayerState, isExceptionalScore, pageFromPath, podiumRank, releaseRoundSubmission,
+  scoreMessage, shouldShowWelcome,
 } from './gameState.js';
 
 const API = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
@@ -47,6 +49,16 @@ function IconButton({ children, label, onClick, className = '', disabled = false
   );
 }
 
+function keepFocusInside(event, dialog) {
+  if (event.key !== 'Tab' || !dialog) return;
+  const controls = [...dialog.querySelectorAll('a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')];
+  if (!controls.length) { event.preventDefault(); dialog.focus(); return; }
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}
+
 function ScoreList({ title, subtitle, entries, type, large = false }) {
   const Icon = type === 'guardian' ? Shield : Flame;
   return (
@@ -59,8 +71,10 @@ function ScoreList({ title, subtitle, entries, type, large = false }) {
       {entries.length ? (
         <ol className="score-list">
           {entries.slice(0, 5).map((entry, index) => (
-            <li key={entry.id} className="score-row">
-              <span className={`rank rank-${index + 1}`}>{String(index + 1).padStart(2, '0')}</span>
+            <li key={entry.id} className={`score-row ${podiumRank(index)}`}>
+              <span className={`rank rank-${index + 1}`} aria-label={`Rank ${index + 1}`}>
+                {index === 0 ? <Trophy size={18} /> : index < 3 ? <Medal size={17} /> : String(index + 1).padStart(2, '0')}
+              </span>
               <span className="player-name">{entry.playerName}</span>
               <span className="score-number">{entry.similarity}<small>%</small></span>
             </li>
@@ -95,18 +109,20 @@ function LeaderboardPage({ leaderboard, dataError, onBack }) {
   );
 }
 
-function ChallengeModal({ activeStep, error, isPlaying, offlineDemo, onClose, onLeaderboard, onNewPlayer, onRetry, phase, pipeline, play, snapshot }) {
+function ChallengeModal({ activeStep, error, isPlaying, offlineDemo, onClose, onEducation, onLeaderboard, onNewPlayer, onRetry, phase, pipeline, play, snapshot }) {
   const dialogRef = useRef(null);
   const guardian = (play?.mode || snapshot?.mode) === 'guardian';
-  const scoreMessage = play && (guardian
-    ? play.similarity >= 70 ? 'Meaning survived!' : 'Meaning got lost along the way.'
-    : play.similarity < 25 ? 'Glitch successful!' : 'Meaning survived the chaos.');
+  const resultMessage = play && scoreMessage(play.mode, play.similarity);
+  const exceptional = play && !offlineDemo && isExceptionalScore(play.mode, play.similarity);
   const visibleStages = pipeline.length ? pipeline : stagePlaceholders;
   const progress = activeStep < 0 ? 0 : Math.min(activeStep + 1, 5);
 
   useEffect(() => { dialogRef.current?.focus(); }, []);
   useEffect(() => {
-    function onKeyDown(event) { if (event.key === 'Escape' && !isPlaying) onClose(); }
+    function onKeyDown(event) {
+      keepFocusInside(event, dialogRef.current);
+      if (event.key === 'Escape' && !isPlaying) onClose();
+    }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isPlaying, onClose]);
@@ -139,7 +155,7 @@ function ChallengeModal({ activeStep, error, isPlaying, offlineDemo, onClose, on
           </div>
         )}
 
-        {phase !== 'loading' && phase !== 'error' && !offlineDemo && (
+        {phase !== 'loading' && phase !== 'error' && !offlineDemo && !play && (
           <div className="journey-stage-area" aria-live="polite">
             <div className="journey-progress"><span style={{ width: `${progress * 20}%` }} /></div>
             <div className="journey-stages">
@@ -166,22 +182,74 @@ function ChallengeModal({ activeStep, error, isPlaying, offlineDemo, onClose, on
           <div className="offline-result" role="status"><CircleHelp size={24} /><div><strong>{offlineDemo.label}</strong><p>{offlineDemo.message}</p></div></div>
         )}
         {play && (
-          <div className={`final-result ${guardian ? 'result-guardian' : 'result-glitcher'} ${offlineDemo ? 'result-offline' : ''}`}>
+          <div className={`final-result ${guardian ? 'result-guardian' : 'result-glitcher'} ${offlineDemo ? 'result-offline' : ''} ${exceptional ? 'exceptional-result' : ''}`}>
+            {exceptional && <div className="celebration" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
             <div className="result-title-row">
-              <div><span className="eyebrow"><span className="eyebrow-line" /> FINAL RESULT</span><h3>{offlineDemo ? 'Offline demonstration' : scoreMessage}</h3></div>
-              <div className="final-score">{play.similarity}<small>%</small><span>similarity</span></div>
+              <div><span className="eyebrow"><span className="eyebrow-line" /> FINAL RESULT</span><h3>{offlineDemo ? 'Offline demonstration' : resultMessage}</h3><span className={`result-mode ${guardian ? 'guardian-mode' : 'glitcher-mode'}`}>{guardian ? <Shield size={13} /> : <Flame size={13} />}{guardian ? 'Meaning Guardian' : 'AI Glitcher'}</span></div>
+              <div className="final-score" aria-label={`${play.similarity} percent similarity`}><strong>{play.similarity}</strong><small>%</small><span>similarity</span></div>
             </div>
             <div className="sentence-compare">
               <div><span>Started as</span><p dir="rtl">{play.original}</p></div>
               <ArrowRight className="compare-arrow" size={22} />
               <div className="final-sentence"><span>Returned as</span><p dir="rtl">{play.finalArabic}</p></div>
             </div>
+            <button type="button" className="education-link" onClick={onEducation}><BookOpen size={15} /> How does this game work? Discover the AWS technology behind it <ArrowRight size={14} /></button>
             <div className="result-actions">
               <button type="button" className="secondary-button" onClick={onLeaderboard}><Trophy size={17} /> View leaderboard</button>
               <button type="button" className={`start-button ${guardian ? 'guardian-cta' : 'glitcher-cta'}`} onClick={onNewPlayer}><RotateCcw size={17} /> New player</button>
             </div>
           </div>
         )}
+      </section>
+    </div>
+  );
+}
+
+function InfoModal({ onClose }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    dialogRef.current?.focus();
+    function onKeyDown(event) { keepFocusInside(event, dialogRef.current); if (event.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKeyDown);
+    return () => { window.removeEventListener('keydown', onKeyDown); previousFocus?.focus?.(); };
+  }, [onClose]);
+
+  return (
+    <div className="overlay info-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="dialog info-dialog" role="dialog" aria-modal="true" aria-labelledby="info-title" tabIndex={-1} ref={dialogRef}>
+        <div className="dialog-heading info-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> BEHIND THE GAME</span><h2 id="info-title">How AWS powers the journey</h2></div><IconButton label="Close AWS explanation" onClick={onClose}><X size={19} /></IconButton></div>
+        <div className="info-content">
+          <section><h3><span>A</span> What is Lost in Translation?</h3><p>An Arabic sentence travels through five consecutive translations—Japanese, Russian, French, English, and back to Arabic. The experiment reveals how wording can change when machine translations are chained together.</p></section>
+          <section><h3><span>B</span> Two ways to play</h3><div className="info-mode-grid"><p><b><Shield size={15} /> Meaning Guardian</b>Higher textual similarity wins.</p><p><b><Flame size={15} /> AI Glitcher</b>Lower textual similarity wins.</p></div><p>The score measures textual differences between the first and last sentences. It does not directly judge whether their meaning is the same.</p></section>
+          <section><h3><span>C</span> What is Amazon Translate?</h3><p>Amazon Translate is an AWS machine translation service that uses machine learning to translate text between languages. It gives developers translation capabilities without requiring them to train their own AI models.</p></section>
+          <section><h3><span>D</span> How we use AWS</h3><ol className="aws-steps"><li>The player submits an Arabic sentence.</li><li>The game sends it securely to its server.</li><li>The server authenticates with AWS.</li><li>It calls the Amazon Translate <code>TranslateText</code> API.</li><li>AWS returns the translated result.</li><li>That result becomes the next translation’s input.</li><li>The process repeats five times until the sentence returns to Arabic.</li><li>The game compares the first and last sentences and displays the score.</li></ol><p><strong>One completed live round makes exactly five sequential Amazon Translate requests.</strong> AWS performs each translation; the game calculates the similarity score. AWS Identity and Access Management (IAM) restricts what the game may access, while AWS Security Token Service (STS) verifies the AWS identity before translation begins.</p></section>
+          <section><h3><span>E</span> Why is this interesting?</h3><p>Repeated translations can introduce different wording, ambiguity, and surprising results. This is a playful experiment: one low similarity score does not mean Amazon Translate is generally inaccurate.</p></section>
+          <section className="resource-section"><h3><span>F</span> Learn from AWS</h3><div className="resource-grid">{AWS_RESOURCES.map(([title, href]) => <a key={href} href={href} target="_blank" rel="noopener noreferrer"><BookOpen size={16} /><span>{title}</span><ExternalLink size={13} /></a>)}</div><h4><PlayCircle size={16} /> Recommended videos on the official resources page</h4><ul className="video-list">{AWS_VIDEO_TITLES.map((title) => <li key={title}><a href="https://aws.amazon.com/translate/resources/" target="_blank" rel="noopener noreferrer">{title}<ExternalLink size={12} /></a></li>)}</ul></section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function WelcomeModal({ onClose, onEducation }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+    function onKeyDown(event) { keepFocusInside(event, dialogRef.current); if (event.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="overlay welcome-overlay" role="presentation">
+      <section className="dialog welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcome-title" tabIndex={-1} ref={dialogRef}>
+        <div className="welcome-visual" aria-hidden="true"><AudioLines size={30} /><span>AR</span><i /><span>JP</span><i /><span>RU</span><i /><span>FR</span><i /><span>EN</span><i /><span>AR</span></div>
+        <div className="dialog-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> READY FOR THE RELAY?</span><h2 id="welcome-title">Welcome to Lost in Translation!</h2><p className="welcome-subtitle">One sentence. Five translations. Can you beat the AI?</p></div><IconButton label="Close welcome" onClick={onClose}><X size={19} /></IconButton></div>
+        <div className="welcome-content"><section><h3>What is the game?</h3><p>Enter an Arabic sentence and see how it changes after traveling through Japanese, Russian, French, English, and back to Arabic using Amazon Translate.</p></section><section><h3>Choose your challenge</h3><div className="welcome-modes"><p><b><Shield size={15} /> Meaning Guardian</b>Try to preserve your sentence. Higher similarity wins.</p><p><b><Flame size={15} /> AI Glitcher</b>Try to create the biggest wording change. Lower similarity wins.</p></div></section><section><h3>How to play</h3><ol className="play-steps"><li>Choose a game mode.</li><li>Enter an Arabic sentence or choose one from the Sentence Bank.</li><li>Enter your player name.</li><li>Press Start Challenge.</li><li>Watch all five translations and see your score.</li><li>Check the leaderboard.</li></ol></section></div>
+        <div className="welcome-actions"><button type="button" className="text-action" onClick={onEducation}><BookOpen size={16} /> Learn how AWS powers this game</button><button type="button" className="start-button guardian-cta" onClick={onClose}>Let’s Play! <ArrowRight size={17} /></button></div>
       </section>
     </div>
   );
@@ -197,6 +265,8 @@ function App() {
   const [showPresets, setShowPresets] = useState(false);
   const [showLogger, setShowLogger] = useState(false);
   const [showChallenge, setShowChallenge] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(() => shouldShowWelcome(window.sessionStorage));
+  const [showInfo, setShowInfo] = useState(false);
   const [presetSearch, setPresetSearch] = useState('');
   const [newSentence, setNewSentence] = useState('');
   const [newCategory, setNewCategory] = useState('Team');
@@ -233,9 +303,9 @@ function App() {
   }, []);
   useEffect(() => { if (showPresets || showLogger) modalRef.current?.focus(); }, [showPresets, showLogger]);
   useEffect(() => {
-    document.body.classList.toggle('modal-open', showPresets || showLogger || showChallenge);
+    document.body.classList.toggle('modal-open', showPresets || showLogger || showChallenge || showWelcome || showInfo);
     return () => document.body.classList.remove('modal-open');
-  }, [showPresets, showLogger, showChallenge]);
+  }, [showPresets, showLogger, showChallenge, showWelcome, showInfo]);
   useEffect(() => {
     function onKeyDown(event) {
       if (event.key !== 'Escape') return;
@@ -251,6 +321,16 @@ function App() {
     setPage(pageFromPath(path)); setShowChallenge(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+  const closeWelcome = useCallback(() => {
+    dismissWelcome(window.sessionStorage);
+    setShowWelcome(false);
+    window.setTimeout(() => startButtonRef.current?.focus(), 0);
+  }, []);
+  const welcomeToEducation = useCallback(() => {
+    dismissWelcome(window.sessionStorage);
+    setShowWelcome(false); setShowInfo(true);
+  }, []);
+  const closeInfo = useCallback(() => setShowInfo(false), []);
   function resetRound() {
     window.clearTimeout(timerRef.current);
     setPlay(null); setPipeline([]); setActiveStep(-1); setIsPlaying(false); setError('');
@@ -325,6 +405,7 @@ function App() {
         <nav className="main-nav" aria-label="Main navigation">
           <a href="/" className={page === 'game' ? 'active' : ''} onClick={(event) => { event.preventDefault(); navigate('/'); }}><Home size={15} /> Game</a>
           <a href="/leaderboard" className={page === 'leaderboard' ? 'active' : ''} onClick={(event) => { event.preventDefault(); navigate('/leaderboard'); }}><Trophy size={15} /> Leaderboard</a>
+          <button type="button" aria-label="How to play" onClick={() => setShowWelcome(true)}><HelpCircle size={15} /> <span>How to play</span></button>
         </nav>
         <button className="team-button" onClick={() => { setShowLogger(true); setLoggerError(''); }}><BadgePlus size={17} /> <span>Add a sentence</span></button>
       </header>
@@ -361,7 +442,10 @@ function App() {
       )}
       <footer className="page-footer"><span>DEVFEST 2026 <i /> AWS CLUB · BIRZEIT UNIVERSITY</span><span>BOOTH 02 <i /> LOST IN TRANSLATION</span></footer>
 
-      {showChallenge && roundSnapshot && <ChallengeModal activeStep={activeStep} error={error} isPlaying={isPlaying} offlineDemo={offlineDemo} onClose={() => { if (!isPlaying) { setShowChallenge(false); startButtonRef.current?.focus(); } }} onLeaderboard={() => navigate('/leaderboard')} onNewPlayer={newPlayer} onRetry={() => runRound(roundSnapshot)} phase={challengePhase} pipeline={pipeline} play={play} snapshot={roundSnapshot} />}
+      {showChallenge && roundSnapshot && <ChallengeModal activeStep={activeStep} error={error} isPlaying={isPlaying} offlineDemo={offlineDemo} onClose={() => { if (!isPlaying) { setShowChallenge(false); startButtonRef.current?.focus(); } }} onEducation={() => setShowInfo(true)} onLeaderboard={() => navigate('/leaderboard')} onNewPlayer={newPlayer} onRetry={() => runRound(roundSnapshot)} phase={challengePhase} pipeline={pipeline} play={play} snapshot={roundSnapshot} />}
+
+      {showWelcome && !showInfo && <WelcomeModal onClose={closeWelcome} onEducation={welcomeToEducation} />}
+      {showInfo && <InfoModal onClose={closeInfo} />}
 
       {showPresets && <div className="overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPresets(false); }}><section className="dialog preset-dialog" role="dialog" aria-modal="true" aria-labelledby="preset-title" tabIndex={-1} ref={modalRef}>
         <div className="dialog-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> QUICK PICK</span><h2 id="preset-title">Sentence bank</h2></div><IconButton label="Close" onClick={() => setShowPresets(false)}><X size={19} /></IconButton></div>

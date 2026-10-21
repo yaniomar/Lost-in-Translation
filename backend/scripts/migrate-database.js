@@ -44,6 +44,8 @@ if (!databaseUrl) {
         example.similarity, example.recordedAt]);
     }
 
+    // Only historical, non-demo plays remain in this import source. Verified
+    // presentation rows were removed from sentences_log.json before DEVFEST.
     for (const play of seed.plays || []) {
       await client.query(`
         INSERT INTO plays
